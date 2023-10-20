@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://dij766m30nqh"]
+
+[ext_resource type="Script" path="res://scripts/combat_manager.gd" id="1_xpw5t"]
+[ext_resource type="Script" path="res://scripts/combat/attack_parser.gd" id="2_df1md"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_xpw5t")
+
+[node name="Node3D" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="Node3D"]
+transform = Transform3D(0.984285, -0.0696243, 0.162281, 0, 0.918991, 0.394279, -0.176587, -0.388083, 0.904549, 6.99674, 3.46214, 16.204)
+
+[node name="Node" type="Node" parent="."]
+script = ExtResource("2_df1md")
