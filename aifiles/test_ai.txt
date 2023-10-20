@@ -6,7 +6,7 @@ name = goblin
 attacks = {goblin_swing, goblin_run}
 
 <attack name=goblin_swing>
-me = combat.get_me( 'please' )
-print( 'test lit', 4 ).test( oppa() , wow( 'int_list' ) )
-print( test() )
+me = 'test string lol'
+print( me )
+me.print()
 </attack>

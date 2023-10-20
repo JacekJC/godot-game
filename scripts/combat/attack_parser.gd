@@ -1,17 +1,32 @@
 extends Node
 
 
+var parser
+var tokenizer
+var compiler
+
 # Called when the node enters the scene tree for the first time.
 func _ready():
+	parser = Node2D.new()
+	parser.set_script(load("res://scripts/combat/combat_script/parser.gd"))
+	tokenizer = Node2D.new()
+	tokenizer.set_script(load("res://scripts/combat/combat_script/tokenizer.gd"))
+	compiler = Node2D.new()
+	compiler.set_script(load("res://scripts/combat/combat_script/compiler.gd"))
 	var line = "me = combat.get_friends( combat.getme, wow )"
-	line = "three.test.combat( now ).nowthis( then_this )"
+	line = "set_this = combat.get_me()"
 	print("parsing line, ", line)
-	parse_line(line)
+	var p = parser.parse_line(line)
+	print("tokenizing ",p)
+	p = tokenizer.tokenize(p, 0)
+	print("compiling ",p[1])
+	p = compiler.compile(p[1])
+	print(p.debug())
 	pass
 	#print(exists)
 	#print("|| PARSING ATTACKS ||")
 
-func _init():
+func _init():	
 	print("attack parser loaded")	
 
 func fPrint( params ):
@@ -28,6 +43,7 @@ func entity_place_holder():
 	return entity.new()
 
 func load_file_and_parse(file_name):
+	return null
 	var exists = FileAccess.file_exists("res://aifiles/"+file_name+".txt")
 	if(!exists):
 		return null
@@ -35,7 +51,7 @@ func load_file_and_parse(file_name):
 	t = extract_attacks(t.get_as_text().split('\n'))
 	var attacks = []
 	for s in t:
-		var r = parse_text(s.str_steps)
+		var r = parser.parse_text(s.str_steps)
 		s.steps = r[0]
 		s.jump_points = r[1]
 		s.node = self
@@ -82,8 +98,29 @@ class attack:
 	func fSet( name, value ):
 		self.temp_vars[name] = value
 
-	func callfunc(name, args):
-		print("function called!, ", name, " args: ", args)
+	func set_var(path, val):
+		print("setting variable ", path, " to ")
+		if(["combat", "world"].has(path[0])):
+			print("get parents for var")
+		else:
+			temp_vars[path[0]] = val
+		print(path, " set to ", val)
+		return temp_vars[path[0]]
+
+	func get_var(path):
+		if(["combat", "world"].has(path[0])):
+			print("get parents for var")
+		else:
+			print("getting var ", path)
+			if !temp_vars.has(path[0]):
+				return "Variable does not exist"
+			print("got temp var ", temp_vars[path[0]])
+			return temp_vars[path[0]]
+		return null
+
+	func callfunc(oped, name, args, extra = null):
+		print("function call ", oped, " ", name, " ", args, " ", extra)
+		return str(name) + " called"
 
 func extract_attacks(str_arr):
 	var index = 0
@@ -108,18 +145,6 @@ enum ekeywords{
 	eclear,
 	ejump,
 	eif,
-}
-
-enum efunctions{
-	filter,
-	random,
-	flood_fill,
-	get,
-	move,
-	damage,
-	eval,
-	add,
-	subtract,
 }
 
 enum efilter{
@@ -231,7 +256,7 @@ class mul_op:
 
 class eq_op:
 	func exec(value_a, value_b, vars):	
-		return value_a.vset(value_b.exec(vars), vars)
+		return value_a.vset(vars, value_b.exec(vars))
 		
 class nop:
 	var left
@@ -280,7 +305,7 @@ func compile_instruction(ins):
 	if ins.t == ctype.cstr:
 		if(child.size()==1 && child[0].ntype == "func"):
 			child[0].name = [nvariable.new(ins.value, [child[0].name[0]]), child[0].name[1]]
-			print(" is a call text! ")
+			print(" is a call text!, ", child[0].name, " ", child[0].name[0].exec())
 			return child[0]
 		return nvariable.new(ins.value, child)
 	if ins.t == ctype.cop:
@@ -330,21 +355,28 @@ class nfunc:
 		name = _name
 		pass
 	
-	func exec(vars=null):
+	func exec(vars=null, extra=null):
 		if(vars!=null):
 			var ar = []
 			for a in args:
 				ar.push_back(a.exec(vars))
-			var r = vars.callfunc(getname(), ar)
+			print(name)
+			var val = null
+			if name[0]!=null:	
+				val = name[0].exec(vars)
+			var r = vars.callfunc(val, getname(), ar, extra)
 			if child!=null:
-				child.exec(vars)
+				child.exec(vars, r)
 		return "func not implemented"
 
 	func getname(vars=null):
+		var res = [name[1]]
+		return name[1]
 		if(name[0]==null):
-			return name[1]
+			return [name[1]]
 		else:
-			return [name[0].exec(vars), name[1]]
+			res.push_back(name[0].exec(vars))
+		return res
 
 	func debug():
 		print("FUNCTION NAME : ", getname())
@@ -387,8 +419,19 @@ class nvariable:
 	var children = []
 	var ntype = "var"
 
-	func vset(val, vars):
-		return "null set"
+	func vset(vars, val):
+		if(vars!=null):
+			vars.set_var(get_name(), val)
+		return get_name()
+
+	func get_name():
+		var value = [name]
+		if(children!=null):
+			for child in children:
+				if(child!=null):
+					value.push_back(child.exec())
+		return value
+		
 
 	func exec(vars=null):
 		var value = [name]
@@ -397,7 +440,10 @@ class nvariable:
 				if(child!=null):
 					value.push_back(child.exec())
 		print(" var got ", value )
-		return value
+		if(vars!=null):
+			#return vars.get_var(get_name())
+			return vars.get_var(get_name())
+
 	func _init(_value, _children):
 		name = _value
 		children = _children
@@ -493,7 +539,7 @@ func parse_line(line, index = 0):
 				continue
 		ind+=1
 		c = read_char(line, ind)
-	var r = process(result, 0)
+	var r = tokenize(result, 0)
 	if r != null:
 		if(r[0] == 0):
 			return r
@@ -532,7 +578,7 @@ enum ntype{
 	escope
 }
 
-func process(tokens, depth, adepth = 0):
+func tokenize(tokens, depth, adepth = 0):
 	var stri=""
 	if(tokens.size()==0):
 		return null
@@ -581,7 +627,7 @@ func process(tokens, depth, adepth = 0):
 					for s in sub_tokens:
 						stri+=s.value+" "
 					print(stri)
-					var res = process(sub_tokens, depth, adepth+1)
+					var res = tokenize(sub_tokens, depth, adepth+1)
 					if(res!=null):
 						stri = res.value+" "
 						for g in res.children:
@@ -648,7 +694,7 @@ func process(tokens, depth, adepth = 0):
 		for t in fin_tokens:
 			if(t.size()>1):
 				#print("PROCESSING FOR COMMA THING ", t.size())
-				a_tokens.push_back(process(t, depth, adepth+1))
+				a_tokens.push_back(tokenize(t, depth, adepth+1))
 			else:
 				a_tokens.push_back(t[0])
 
@@ -667,8 +713,8 @@ func process(tokens, depth, adepth = 0):
 		ctoken.t = a_tokens[i_ind].t
 		var split = split_arr(a_tokens, i_ind)
 		#print("split stats ", split[0].size(), " : ", split[1].size())
-		ctoken.children.push_back(process(split[0], depth+1, adepth+1))
-		ctoken.children.push_back(process(split[1], depth+1, adepth+1))
+		ctoken.children.push_back(tokenize(split[0], depth+1, adepth+1))
+		ctoken.children.push_back(tokenize(split[1], depth+1, adepth+1))
 	else:
 		for t in a_tokens:
 			ctoken.children.push_back(t)
@@ -721,35 +767,6 @@ class e_error:
 
 	func _init(msg):
 		error_msg = msg
-
-class store:
-	var name
-	var scope
-	var target
-	
-	func type():
-		pass
-
-	func exec(vars):
-		return return_error()
-
-	func eset(vars):
-		return return_error()
-		
-	func _init():
-		pass
-
-	func return_error():
-		return [etype.err, "not implemented"]
-
-class get_value:
-	var name : String
-
-	func exec():
-		pass	
-
-	func type():
-		pass
 
 enum etype{
 	etile,

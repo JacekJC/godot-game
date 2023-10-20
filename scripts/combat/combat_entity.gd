@@ -34,10 +34,12 @@ class c_entity:
 		return variables[name]
 		
 	func exec_attack(index):
+		return null
 		attacks[index].exec_debug(self, self.combat);
 		return self
 	
 	func add_attacks(attack_arr):
+		return null
 		for a in attack_arr:
 			attacks.push_back(a);
 		return self
